@@ -5,6 +5,7 @@ import { getChatModel } from "@/lib/model";
 import { createAgent, tool } from "langchain";
 import { tavily } from "@tavily/core";
 import { z } from "zod";
+import { SEARCH_TOOL_DESCRIPTION, SYSTEM_PROMPT } from "@/lib/constant";
 
 const tvly = tavily({
   apiKey: process.env.TAVILY_API_KEY,
@@ -12,12 +13,13 @@ const tvly = tavily({
 
 const tavilySearch = tool(
   async ({ query }) => {
+    console.log({query}, "===")
     const results = await tvly.search(query);
     return JSON.stringify(results);
   },
   {
     name: "tavily_search",
-    description: "Search the web for current information using Tavily.",
+    description: SEARCH_TOOL_DESCRIPTION,
     schema: z.object({
       query: z.string().describe("The search query"),
     }),
@@ -25,7 +27,7 @@ const tavilySearch = tool(
 );
 
 const agents = createAgent({
-  systemPrompt: "You are assistant who search data from web tool and return data",
+  systemPrompt: SYSTEM_PROMPT,
   model: getChatModel(),
   tools: [tavilySearch],
   checkpointer: new MemorySaver(),
