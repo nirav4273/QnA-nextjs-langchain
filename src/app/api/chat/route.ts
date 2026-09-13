@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import { MemorySaver } from "@langchain/langgraph";
 import { getChatModel } from "@/lib/model";
 import { createAgent, tool, summarizationMiddleware, countTokensApproximately } from "langchain";
@@ -86,7 +86,39 @@ export async function POST(request: NextRequest) {
     );
     const lastMessage = response.messages[response.messages.length - 1];
 
-    return NextResponse.json({ data: lastMessage, answer: lastMessage.content, sessionId });
+    // response.messages holds the FULL thread history (MemorySaver persists across
+    // turns), so only look at messages added after this turn's HumanMessage —
+    // otherwise tool calls from earlier turns leak into this turn's toolsUsed.
+    const currentTurnStart = response.messages.findLastIndex(
+      (message) => message instanceof HumanMessage && message.content === question
+    );
+    const currentTurnMessages =
+      currentTurnStart === -1
+        ? response.messages
+        : response.messages.slice(currentTurnStart + 1);
+
+    const toolResultsByCallId = new Map<string, unknown>();
+    for (const message of currentTurnMessages) {
+      if (message instanceof ToolMessage && message.tool_call_id) {
+        toolResultsByCallId.set(message.tool_call_id, message.content);
+      }
+    }
+
+    const toolsUsed = currentTurnMessages
+      .filter((message): message is AIMessage => message instanceof AIMessage)
+      .flatMap((message) => message.tool_calls ?? [])
+      .map((call) => ({
+        name: call.name,
+        args: call.args,
+        result: call.id ? toolResultsByCallId.get(call.id) : undefined,
+      }));
+
+    return NextResponse.json({
+      data: lastMessage,
+      answer: lastMessage.content,
+      sessionId,
+      toolsUsed,
+    });
   } catch (error) {
     console.error("Groq chat error:", error);
     return NextResponse.json(

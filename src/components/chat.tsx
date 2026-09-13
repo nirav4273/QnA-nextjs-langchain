@@ -8,9 +8,16 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
+type ToolUsage = {
+  name: string;
+  args: unknown;
+  result: unknown;
+};
+
 type Message = {
   role: "user" | "assistant";
   content: string;
+  toolsUsed?: ToolUsage[];
 };
 
 export function Chat() {
@@ -46,7 +53,14 @@ export function Chat() {
       if (res.ok && typeof data.sessionId === "string") {
         setSessionId(data.sessionId);
       }
-      setMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+      const toolsUsed: ToolUsage[] | undefined =
+        res.ok && Array.isArray(data.toolsUsed) && data.toolsUsed.length > 0
+          ? data.toolsUsed
+          : undefined;
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: answer, toolsUsed },
+      ]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -94,6 +108,13 @@ export function Chat() {
               ) : (
                 message.content
               )}
+              {message.role === "assistant" &&
+                message.toolsUsed &&
+                message.toolsUsed.length > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Used: {message.toolsUsed.map((t) => t.name).join(", ")}
+                  </p>
+                )}
             </div>
           ))}
           {loading && (
